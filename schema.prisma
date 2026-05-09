@@ -1,0 +1,261 @@
+// Prisma Schema - LearnMate AI
+// PostgreSQL Database Schema for Production
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  avatar    String?
+  level     String   @default("intermediate") // beginner, intermediate, advanced
+  xp        Int      @default(0)
+  streak    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  chats            Chat[]
+  progress         LearningProgress[]
+  quizResults      QuizResult[]
+  achievements     UserAchievement[]
+  documents        UploadedDocument[]
+  recommendations  AIRecommendation[]
+  studyGoals       StudyGoal[]
+  sessions         Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================
+// LEARNING CONTENT
+// ============================================
+
+model Subject {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  icon        String
+  color       String
+  description String
+  createdAt   DateTime @default(now())
+
+  topics    Topic[]
+  documents UploadedDocument[]
+
+  @@map("subjects")
+}
+
+model Topic {
+  id          String   @id @default(cuid())
+  subjectId   String
+  name        String
+  difficulty  String   // beginner, intermediate, advanced
+  completed   Boolean  @default(false)
+  order       Int
+  createdAt   DateTime @default(now())
+
+  subject  Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  progress LearningProgress[]
+
+  @@map("topics")
+}
+
+// ============================================
+// CHAT & AI
+// ============================================
+
+model Chat {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  subject   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("chats")
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  chatId    String
+  role      String   // user, assistant, system
+  content   String   @db.Text
+  timestamp DateTime @default(now())
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+// ============================================
+// PROGRESS TRACKING
+// ============================================
+
+model LearningProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  subjectId   String
+  topicId     String
+  completed   Boolean  @default(false)
+  score       Float    @default(0)
+  timeSpent   Int      @default(0) // minutes
+  lastStudied DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic   Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@map("learning_progress")
+}
+
+// ============================================
+// QUIZZES
+// ============================================
+
+model Quiz {
+  id          String   @id @default(cuid())
+  title       String
+  subject     String
+  difficulty  String
+  timeLimit   Int      // minutes
+  totalPoints Int
+  questions   Json     // Array of questions
+  createdAt   DateTime @default(now())
+
+  results QuizResult[]
+
+  @@map("quizzes")
+}
+
+model QuizResult {
+  id          String   @id @default(cuid())
+  quizId      String
+  userId      String
+  score       Int
+  total       Int
+  percentage  Float
+  answers     Json     // User answers
+  completedAt DateTime @default(now())
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_results")
+}
+
+// ============================================
+// GAMIFICATION
+// ============================================
+
+model Achievement {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  icon        String
+  xpReward    Int
+  category    String
+  createdAt   DateTime @default(now())
+
+  users UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+  progress      Float    @default(100)
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model StudyGoal {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  target    Int
+  current   Int      @default(0)
+  unit      String
+  deadline  DateTime
+  category  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("study_goals")
+}
+
+// ============================================
+// DOCUMENTS & RAG
+// ============================================
+
+model UploadedDocument {
+  id        String   @id @default(cuid())
+  userId    String
+  subjectId String?
+  name      String
+  type      String
+  size      Int
+  url       String
+  embeddings Json?   // Vector embeddings
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject? @relation(fields: [subjectId], references: [id])
+
+  @@map("uploaded_documents")
+}
+
+// ============================================
+// AI RECOMMENDATIONS
+// ============================================
+
+model AIRecommendation {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // topic, quiz, resource, practice
+  title       String
+  description String
+  reason      String
+  priority    Int
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ai_recommendations")
+}
